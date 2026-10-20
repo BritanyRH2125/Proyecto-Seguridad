@@ -16,6 +16,12 @@ export function retrieveBasket () {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
       const id = req.params.id
+      // Control de acceso: el carrito solo puede ser consultado por su dueño (prevención IDOR / OWASP A01 / NIST PR.AA-05)
+      const user = security.authenticatedUsers.from(req)
+      if (!user || user.bid == null || Number(user.bid) !== Number(id)) {
+        res.status(401).json({ error: 'Unauthorized access to basket' })
+        return
+      }
       const basket = await BasketModel.findOne({ where: { id }, include: [{ model: ProductModel, paranoid: false, as: 'Products' }] })
       /* jshint eqeqeq:false */
       challengeUtils.solveIf(challenges.basketAccessChallenge, () => {
