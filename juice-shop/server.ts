@@ -425,6 +425,8 @@ function configureApp (app: ReturnType<typeof express>, seq: typeof sequelize) {
   app.post('/api/Feedbacks', verify.captchaBypassChallenge())
   /* User registration challenge verifications before finale takes over */
   app.post('/api/Users', (req: Request, res: Response, next: NextFunction) => {
+    // FIX PR.AA-05 (mass assignment): el rol nunca se toma del cliente; todo registro queda como 'customer'
+    req.body.role = security.roles.customer
     if (req.body.email !== undefined && req.body.password !== undefined && req.body.passwordRepeat !== undefined) {
       if (req.body.email.length !== 0 && req.body.password.length !== 0) {
         req.body.email = req.body.email.trim()
