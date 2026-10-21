@@ -26,26 +26,11 @@ export class OAuthComponent implements OnInit {
 
 
   ngOnInit (): void {
-    this.userService.oauthLogin(this.parseRedirectUrlParams().access_token).subscribe({
-      next: (profile: any) => {
-        const password = btoa(profile.email.split('').reverse().join(''))
-        this.userService.save({ email: profile.email, password, passwordRepeat: password }).subscribe({
-          next: () => {
-            this.login(profile)
-          },
-          error: () => { this.login(profile) }
-        })
-      },
-      error: (error) => {
-        this.invalidateSession(error)
-        this.ngZone.run(async () => await this.router.navigate(['/login']))
-      }
-    })
-  }
-
-  login (profile: any) {
-    this.userService.login({ email: profile.email, password: btoa(profile.email.split('').reverse().join('')), oauth: true }).subscribe({
-      next: (authentication) => {
+    // FIX PR.AA-02: el access_token de Google se envía al servidor para que lo valide allí.
+    // Ya no se deriva una contraseña del email ni se autentica con ella en el cliente.
+    const accessToken = this.parseRedirectUrlParams().access_token
+    this.userService.oauthLoginServer({ access_token: accessToken }).subscribe({
+      next: (authentication: any) => {
         const expires = new Date()
         expires.setHours(expires.getHours() + 8)
         this.cookieService.put('token', authentication.token, { expires })
