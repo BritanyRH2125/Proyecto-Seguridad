@@ -8,7 +8,9 @@ import { AllHtmlEntities as Entities } from 'html-entities'
 import config from 'config'
 import fs from 'node:fs/promises'
 
+import * as challengeUtils from '../lib/challengeUtils'
 import { themes } from '../views/themes/themes'
+import { challenges } from '../data/datacache'
 import * as security from '../lib/insecurity'
 import { UserModel } from '../models/user'
 import * as utils from '../lib/utils'
@@ -31,8 +33,7 @@ export function getUserProfile () {
 
     const loggedInUser = security.authenticatedUsers.get(req.cookies.token)
     if (!loggedInUser) {
-      next(new Error('Blocked illegal activity by ' + req.socket.remoteAddress))
-      return
+      next(new Error('Blocked illegal activity by ' + req.socket.remoteAddress)); return
     }
 
     let user: UserModel | null
@@ -48,13 +49,33 @@ export function getUserProfile () {
       return
     }
 
+    let username = user.username
+
     const themeKey = config.get<string>('application.theme') as keyof typeof themes
     const theme = themes[themeKey] || themes['bluegrey-lightgreen']
 
-    // GU-01: Mostrar el nombre como texto escapado,
-    // sin evaluar expresiones proporcionadas por el usuario.
-    template = template.replace(/_username_/g, '#{username}')
-    template = template.replace(/_emailHash_/g, security.hash(user.email))
+    if (utils.isChallengeEnabled(challenges.usernameXssChallenge)) {
+      if (username?.match(/#{(.*)}/) !== null) {
+        req.app.locals.abused_ssti_bug = true
+        const code = username?.substring(2, username.length - 1)
+        try {
+          if (!code) {
+            throw new Error('Username is null')
+          }
+          username = eval(code) // eslint-disable-line no-eval
+        } catch (err) {
+          username = '\\' + username
+        }
+      } else {
+        username = '\\' + username
+      }
+      if (username) {
+        template = template.replace(/_username_/g, username)
+      }
+    } else {
+      template = template.replace(/_username_/g, '#{username}')
+    }
+    template = template.replace(/_emailHash_/g, security.hash(user?.email))
     template = template.replace(/_title_/g, entities.encode(config.get<string>('application.name')))
     template = template.replace(/_favicon_/g, favicon())
     template = template.replace(/_bgColor_/g, theme.bgColor)
@@ -67,7 +88,11 @@ export function getUserProfile () {
     try {
       const pug = (await import('pug')).default
       const fn = pug.compile(template)
-      const CSP = `img-src 'self' ${user.profileImage}; script-src 'self' 'unsafe-eval'`
+      const CSP = `img-src 'self' ${user?.profileImage}; script-src 'self' 'unsafe-eval'`
+
+      challengeUtils.solveIf(challenges.usernameXssChallenge, () => {
+        return username && user?.profileImage.match(/;[ ]*script-src(.)*'unsafe-inline'/g) !== null && username.includes('<script>alert(`xss`)</script>')
+      })
 
       res.set({
         'Content-Security-Policy': CSP
