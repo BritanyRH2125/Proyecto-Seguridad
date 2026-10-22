@@ -2,12 +2,12 @@
  * Copyright (c) 2014-2026 Bjoern Kimminich & the OWASP Juice Shop contributors.
  * SPDX-License-Identifier: MIT
  */
-
 import { type Request, type Response, type NextFunction } from 'express'
 import { AllHtmlEntities as Entities } from 'html-entities'
 import config from 'config'
 import fs from 'node:fs/promises'
 
+import { generateCsrfToken } from '../lib/csrfProtection'
 import { themes } from '../views/themes/themes'
 import * as security from '../lib/insecurity'
 import { UserModel } from '../models/user'
@@ -34,6 +34,9 @@ export function getUserProfile () {
       next(new Error('Blocked illegal activity by ' + req.socket.remoteAddress))
       return
     }
+
+    // GU-02: Generar un token CSRF vinculado a la sesión autenticada.
+    const csrfToken = generateCsrfToken(req.cookies.token)
 
     let user: UserModel | null
     try {
@@ -73,7 +76,10 @@ export function getUserProfile () {
         'Content-Security-Policy': CSP
       })
 
-      res.send(fn(user))
+      res.send(fn({
+        ...user.get({ plain: true }),
+        csrfToken
+      }))
     } catch (err) {
       next(new Error('Blocked illegal activity by ' + req.socket.remoteAddress))
     }
