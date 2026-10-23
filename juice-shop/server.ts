@@ -298,9 +298,10 @@ function configureApp (app: ReturnType<typeof express>, seq: typeof sequelize) {
   app.use('/encryptionkeys/:file', serveKeyFiles())
 
   /* /logs directory browsing */ // vuln-code-snippet neutral-line accessLogDisclosureChallenge
-  app.use('/support/logs', serveIndexMiddleware, serveIndex('logs', { icons: true, view: 'details' })) // vuln-code-snippet vuln-line accessLogDisclosureChallenge
+  // FIX A01/A09: el acceso a los logs requiere autenticación y rol admin (antes era anónimo)
+  app.use('/support/logs', security.isAuthorized(), security.isAdmin(), serveIndexMiddleware, serveIndex('logs', { icons: true, view: 'details' }))
   app.use('/support/logs', verify.accessControlChallenges()) // vuln-code-snippet hide-line
-  app.use('/support/logs/:file', serveLogFiles()) // vuln-code-snippet vuln-line accessLogDisclosureChallenge
+  app.use('/support/logs/:file', security.isAuthorized(), security.isAdmin(), serveLogFiles())
 
   /* Swagger documentation for B2B v2 endpoints */
   app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument))
@@ -355,6 +356,12 @@ function configureApp (app: ReturnType<typeof express>, seq: typeof sequelize) {
     verbose: false,
     max_logs: '2d'
   })
+  // FIX A09 (audit poisoning): se eliminan saltos de línea de los campos controlados por el cliente
+  // (URL, User-Agent, Referer) para que no puedan forjar/inyectar entradas falsas en el log de acceso
+  const stripNewlines = (value?: string) => (value ?? '').replace(/[\r\n]+/g, ' ')
+  morgan.token('url', (req: any) => stripNewlines(req.originalUrl || req.url))
+  morgan.token('user-agent', (req: any) => stripNewlines(req.headers['user-agent']))
+  morgan.token('referrer', (req: any) => stripNewlines(req.headers.referer || req.headers.referrer))
   app.use(morgan('combined', { stream: accessLogStream }))
 
   // vuln-code-snippet start resetPasswordMortyChallenge
