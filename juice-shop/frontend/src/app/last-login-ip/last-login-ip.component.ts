@@ -3,8 +3,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-import { Component, inject, OnInit, ChangeDetectionStrategy } from '@angular/core'
-import { DomSanitizer } from '@angular/platform-browser'
+import { Component, OnInit, ChangeDetectionStrategy } from '@angular/core'
 import { jwtDecode } from 'jwt-decode'
 import { TranslateModule } from '@ngx-translate/core'
 import { MatCardModule } from '@angular/material/card'
@@ -18,9 +17,7 @@ import { MatCardModule } from '@angular/material/card'
 })
 
 export class LastLoginIpComponent implements OnInit {
-  private readonly sanitizer = inject(DomSanitizer)
-
-  lastLoginIp: any = '?'
+  lastLoginIp: string = '?'
 
   ngOnInit (): void {
     try {
@@ -36,8 +33,9 @@ export class LastLoginIpComponent implements OnInit {
     if (token) {
       payload = jwtDecode(token)
       if (payload.data.lastLoginIp) {
-
-        this.lastLoginIp = this.sanitizer.bypassSecurityTrustHtml(`<small>${payload.data.lastLoginIp}</small>`)
+        // FIX XSS (OWASP A03): se asigna el valor como texto plano; Angular lo escapa al renderizar.
+        // Ya no se usa bypassSecurityTrustHtml, que desactivaba la sanitización.
+        this.lastLoginIp = payload.data.lastLoginIp
       }
     }
   }

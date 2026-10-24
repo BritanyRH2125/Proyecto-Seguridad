@@ -66,6 +66,7 @@ import datacreator from './data/datacreator'
 import locales from './data/static/locales.json'
 
 import { login } from './routes/login'
+import { oauthLogin } from './routes/oauthLogin'
 import * as verify from './routes/verify'
 import * as address from './routes/address'
 import * as metrics from './routes/metrics'
@@ -297,9 +298,10 @@ function configureApp (app: ReturnType<typeof express>, seq: typeof sequelize) {
   app.use('/encryptionkeys/:file', serveKeyFiles())
 
   /* /logs directory browsing */ // vuln-code-snippet neutral-line accessLogDisclosureChallenge
-  app.use('/support/logs', serveIndexMiddleware, serveIndex('logs', { icons: true, view: 'details' })) // vuln-code-snippet vuln-line accessLogDisclosureChallenge
+  // FIX A01/A09: el acceso a los logs requiere autenticación y rol admin (antes era anónimo)
+  app.use('/support/logs', security.isAuthorized(), security.isAdmin(), serveIndexMiddleware, serveIndex('logs', { icons: true, view: 'details' }))
   app.use('/support/logs', verify.accessControlChallenges()) // vuln-code-snippet hide-line
-  app.use('/support/logs/:file', serveLogFiles()) // vuln-code-snippet vuln-line accessLogDisclosureChallenge
+  app.use('/support/logs/:file', security.isAuthorized(), security.isAdmin(), serveLogFiles())
 
   /* Swagger documentation for B2B v2 endpoints */
   app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument))
@@ -354,15 +356,21 @@ function configureApp (app: ReturnType<typeof express>, seq: typeof sequelize) {
     verbose: false,
     max_logs: '2d'
   })
+  // FIX A09 (audit poisoning): se eliminan saltos de línea de los campos controlados por el cliente
+  // (URL, User-Agent, Referer) para que no puedan forjar/inyectar entradas falsas en el log de acceso
+  const stripNewlines = (value?: string) => (value ?? '').replace(/[\r\n]+/g, ' ')
+  morgan.token('url', (req: any) => stripNewlines(req.originalUrl || req.url))
+  morgan.token('user-agent', (req: any) => stripNewlines(req.headers['user-agent']))
+  morgan.token('referrer', (req: any) => stripNewlines(req.headers.referer || req.headers.referrer))
   app.use(morgan('combined', { stream: accessLogStream }))
 
   // vuln-code-snippet start resetPasswordMortyChallenge
   /* Rate limiting */
-  app.enable('trust proxy')
+  // FIX PR.AA-05: no se habilita 'trust proxy' (no hay proxy de confianza y X-Forwarded-For es falsificable).
+  // El rate limit usa el IP real de la conexion (comportamiento por defecto de express-rate-limit).
   app.use('/rest/user/reset-password', rateLimit({
     windowMs: 5 * 60 * 1000,
-    max: 100,
-    keyGenerator ({ headers, ip }: { headers: any, ip: any }) { return headers['X-Forwarded-For'] ?? ip } // vuln-code-snippet vuln-line resetPasswordMortyChallenge
+    max: 100
   }))
   // vuln-code-snippet end resetPasswordMortyChallenge
 
@@ -379,7 +387,8 @@ function configureApp (app: ReturnType<typeof express>, seq: typeof sequelize) {
   /* Feedbacks: GET allowed for feedback carousel, POST allowed in order to provide feedback without being logged in */
   app.use('/api/Feedbacks/:id', security.isAuthorized())
   /* Users: Only POST is allowed in order to register a new user */
-  app.get('/api/Users', security.isAuthorized())
+  // FIX PR.AA-05 (RBAC): listar todos los usuarios es solo para admin, no para cualquier sesión válida
+  app.get('/api/Users', security.isAuthorized(), security.isAdmin())
   app.route('/api/Users/:id')
     .get(security.isAuthorized())
     .put(security.denyAll())
@@ -425,6 +434,8 @@ function configureApp (app: ReturnType<typeof express>, seq: typeof sequelize) {
   app.post('/api/Feedbacks', verify.captchaBypassChallenge())
   /* User registration challenge verifications before finale takes over */
   app.post('/api/Users', (req: Request, res: Response, next: NextFunction) => {
+    // FIX PR.AA-05 (mass assignment): el rol nunca se toma del cliente; todo registro queda como 'customer'
+    req.body.role = security.roles.customer
     if (req.body.email !== undefined && req.body.password !== undefined && req.body.passwordRepeat !== undefined) {
       if (req.body.email.length !== 0 && req.body.password.length !== 0) {
         req.body.email = req.body.email.trim()
@@ -613,6 +624,8 @@ function configureApp (app: ReturnType<typeof express>, seq: typeof sequelize) {
 
   /* Custom Restful API */
   app.post('/rest/user/login', login())
+  // FIX PR.AA-02: login OAuth validado en el servidor (valida el access_token de Google, no deriva la contraseña del email)
+  app.post('/rest/user/oauth-login', oauthLogin())
   app.get('/rest/user/change-password', utils.asyncHandler(changePassword()))
   app.post('/rest/user/reset-password', utils.asyncHandler(resetPassword()))
   app.get('/rest/user/security-question', utils.asyncHandler(securityQuestion()))
@@ -623,7 +636,8 @@ function configureApp (app: ReturnType<typeof express>, seq: typeof sequelize) {
   app.post('/rest/basket/:id/checkout', placeOrder())
   app.put('/rest/basket/:id/coupon/:coupon', utils.asyncHandler(applyCoupon()))
   app.get('/rest/admin/application-version', utils.asyncHandler(retrieveAppVersion()))
-  app.get('/rest/admin/application-configuration', utils.asyncHandler(retrieveAppConfiguration()))
+  // FIX PR.AA-05 (RBAC): la configuración de la aplicación es una ruta administrativa; requiere rol admin
+  app.get('/rest/admin/application-configuration', security.isAuthorized(), security.isAdmin(), utils.asyncHandler(retrieveAppConfiguration()))
   app.get('/rest/repeat-notification', utils.asyncHandler(repeatNotification()))
   app.get('/rest/continue-code', utils.asyncHandler(continueCode()))
   app.get('/rest/continue-code-findIt', utils.asyncHandler(continueCodeFindIt()))
