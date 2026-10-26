@@ -83,6 +83,12 @@ export function quantityCheckBeforeBasketItemUpdate () {
 }
 
 async function quantityCheck (req: Request, res: Response, next: NextFunction, id: number, quantity: number) {
+  // Rechaza cantidades no enteras o <= 0 para preservar la integridad de la transacción (OWASP A08 / NIST PR.DS-01)
+  const q = Number(quantity)
+  if (!Number.isInteger(q) || q <= 0) {
+    res.status(400).json({ error: 'Invalid quantity' })
+    return
+  }
   const product = await QuantityModel.findOne({ where: { ProductId: id } })
   if (product == null) {
     throw new Error('No such product found!')
