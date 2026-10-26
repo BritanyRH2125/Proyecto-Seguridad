@@ -11,10 +11,14 @@ import * as challengeUtils from '../lib/challengeUtils'
 import * as utils from '../lib/utils'
 import { challenges } from '../data/datacache'
 import * as security from '../lib/insecurity'
+import logger from '../lib/logger'
 
 interface RequestWithRawBody extends Request {
   rawBody: string
 }
+
+// Saneamiento anti log-injection: elimina saltos de línea de los datos controlados por el usuario antes de registrarlos
+const sanitizeForLog = (v: unknown) => String(v ?? '').replace(/[\r\n]+/g, ' ')
 
 export function addBasketItem () {
   return async (req: Request, res: Response, next: NextFunction) => {
@@ -47,6 +51,8 @@ export function addBasketItem () {
       const basketItemInstance = BasketItemModel.build(basketItem)
       try {
         const addedBasketItem = await basketItemInstance.save()
+        // Auditoría de la operación transaccional (OWASP A09 / NIST DE.AE-02)
+        logger.info(`AUDIT basketItemAdd user=${sanitizeForLog(user?.data?.email)} product=${sanitizeForLog(basketItem.ProductId)} basket=${sanitizeForLog(basketItem.BasketId)} quantity=${sanitizeForLog(basketItem.quantity)} result=ok`)
         res.json({ status: 'success', data: addedBasketItem })
       } catch (error) {
         next(error)
@@ -67,6 +73,8 @@ export function quantityCheckBeforeBasketItemUpdate () {
     try {
       const item = await BasketItemModel.findOne({ where: { id: req.params.id } })
       const user = security.authenticatedUsers.from(req)
+      // Auditoría del intento de actualización (OWASP A09 / NIST DE.AE-02)
+      logger.info(`AUDIT basketItemUpdate user=${sanitizeForLog(user?.data?.email)} item=${sanitizeForLog(req.params.id)} quantity=${sanitizeForLog(req.body.quantity)}`)
       challengeUtils.solveIf(challenges.basketManipulateChallenge, () => { return user && req.body.BasketId && user.bid != req.body.BasketId }) // eslint-disable-line eqeqeq
       if (req.body.quantity) {
         if (item == null) {

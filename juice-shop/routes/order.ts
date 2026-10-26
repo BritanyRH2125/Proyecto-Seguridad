@@ -19,6 +19,10 @@ import { WalletModel } from '../models/wallet'
 import * as security from '../lib/insecurity'
 import * as utils from '../lib/utils'
 import * as db from '../data/mongodb'
+import logger from '../lib/logger'
+
+// Saneamiento anti log-injection: elimina saltos de línea de los datos controlados por el usuario antes de registrarlos
+const sanitizeForLog = (v: unknown) => String(v ?? '').replace(/[\r\n]+/g, ' ')
 
 interface Product {
   quantity: number
@@ -174,6 +178,8 @@ export function placeOrder () {
             deliveryPrice: deliveryAmount,
             eta: deliveryMethod.eta.toString()
           }).then(() => {
+            // Auditoría de la operación transaccional (OWASP A09 / NIST DE.AE-02)
+            logger.info(`AUDIT orderPlaced user=${sanitizeForLog(email)} orderId=${sanitizeForLog(orderId)} total=${sanitizeForLog(totalPrice)}`)
             doc.end()
           }).catch((error: unknown) => {
             next(error)

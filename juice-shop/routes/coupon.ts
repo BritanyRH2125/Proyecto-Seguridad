@@ -6,12 +6,16 @@
 import { type Request, type Response, type NextFunction } from 'express'
 import { BasketModel } from '../models/basket'
 import * as security from '../lib/insecurity'
+import logger from '../lib/logger'
+
+// Saneamiento anti log-injection: elimina saltos de línea de los datos controlados por el usuario antes de registrarlos
+const sanitizeForLog = (v: unknown) => String(v ?? '').replace(/[\r\n]+/g, ' ')
 
 export function applyCoupon () {
-  return async ({ params }: Request, res: Response, next: NextFunction) => {
+  return async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const id = params.id
-      let coupon: string | undefined | null = params.coupon ? decodeURIComponent(params.coupon) : undefined
+      const id = req.params.id
+      let coupon: string | undefined | null = req.params.coupon ? decodeURIComponent(req.params.coupon) : undefined
       const discount = security.discountFromCoupon(coupon)
       coupon = discount ? coupon : null
 
@@ -22,6 +26,8 @@ export function applyCoupon () {
       }
 
       await basket.update({ coupon: coupon?.toString() })
+      // Auditoría de la operación transaccional (OWASP A09 / NIST DE.AE-02)
+      logger.info(`AUDIT couponApplied user=${sanitizeForLog(security.authenticatedUsers.from(req)?.data?.email)} basket=${sanitizeForLog(id)} coupon=${sanitizeForLog(coupon)} discount=${sanitizeForLog(discount)}`)
       if (discount) {
         return res.json({ discount })
       } else {
