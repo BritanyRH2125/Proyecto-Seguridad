@@ -4,7 +4,7 @@
  */
 
 import { type Request, type Response, type NextFunction } from 'express'
-
+import { validateCsrfToken } from '../lib/csrfProtection'
 import * as challengeUtils from '../lib/challengeUtils'
 import { challenges } from '../data/datacache'
 import * as security from '../lib/insecurity'
@@ -20,7 +20,11 @@ export function updateUserProfile () {
       next(new Error('Blocked illegal activity by ' + req.socket.remoteAddress))
       return
     }
-
+    // GU-02: Rechazar modificaciones sin un token CSRF valido.
+    if (!validateCsrfToken(req.body?.csrfToken, req.cookies.token)) {
+      res.status(403).send('Forbidden: invalid CSRF token')
+      return
+    }
     try {
       const user = await UserModel.findByPk(loggedInUser.data.id)
       if (!user) {
