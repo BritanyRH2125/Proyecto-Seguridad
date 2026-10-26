@@ -2,7 +2,6 @@
  * Copyright (c) 2014-2026 Bjoern Kimminich & the OWASP Juice Shop contributors.
  * SPDX-License-Identifier: MIT
  */
-
 import { type Request, type Response, type NextFunction } from 'express'
 import { validateCsrfToken } from '../lib/csrfProtection'
 import * as challengeUtils from '../lib/challengeUtils'
@@ -43,7 +42,16 @@ export function updateUserProfile () {
       const userWithStatus = utils.queryResultToJson(savedUser)
       const updatedToken = security.authorize(userWithStatus)
       security.authenticatedUsers.put(updatedToken, userWithStatus)
-      res.cookie('token', updatedToken)
+      // GU-04: Protección de la cookie JWT al actualizar el perfil.
+      // HttpOnly impide su lectura desde JavaScript.
+      // SameSite=Lax limita el envío en solicitudes entre sitios.
+      // Secure se activa cuando la solicitud utiliza HTTPS.
+      res.cookie('token', updatedToken, {
+        httpOnly: true,
+        secure: req.secure,
+        sameSite: 'lax',
+        path: '/'
+      })
       res.location(process.env.BASE_PATH + '/profile')
       res.redirect(process.env.BASE_PATH + '/profile')
     } catch (error) {
