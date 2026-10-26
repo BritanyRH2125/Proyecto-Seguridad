@@ -4,7 +4,6 @@
  */
 import { type Request, type Response, type NextFunction } from 'express'
 import crypto from 'node:crypto'
-
 import { BasketModel } from '../models/basket'
 import { UserModel } from '../models/user'
 import * as security from '../lib/insecurity'
@@ -35,7 +34,7 @@ export function oauthLogin () {
         }
         // 2) Buscar (o crear) la cuenta por el email verificado por Google.
         //    La contraseña es aleatoria y nunca se usa para autenticar a un usuario OAuth.
-        let user = await UserModel.findOne({ where: { email, deletedAt: null } })
+        let user = await UserModel.findOne({ where: { email } })
         if (!user) {
           user = await UserModel.create({ email, password: crypto.randomBytes(32).toString('hex'), role: security.roles.customer })
         }
