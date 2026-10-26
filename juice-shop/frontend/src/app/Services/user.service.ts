@@ -68,6 +68,12 @@ export class UserService {
     return this.http.get('https://www.googleapis.com/oauth2/v1/userinfo?alt=json&access_token=' + accessToken)
   }
 
+  // FIX PR.AA-02: el login OAuth se valida en el servidor; se envía el access_token de Google (no una contraseña derivada del email)
+  oauthLoginServer (params: any) {
+    this.isLoggedIn.next(true)
+    return this.http.post(this.hostServer + '/rest/user/oauth-login', params).pipe(map((response: any) => response.authentication), catchError((err) => { throw err }))
+  }
+
   saveLastLoginIp () {
     return this.http.get(this.hostServer + '/rest/saveLoginIp').pipe(map((response: any) => response), catchError((err) => { throw err }))
   }

@@ -71,3 +71,6 @@ config/*.yml
 # Misc
 .playwright-mcp/
 cypress/screenshots/
+
+# Clave privada de firma JWT (secreto externalizado, no debe versionarse) - FIX GV.RM-02
+encryptionkeys/jwt.key
