@@ -11,12 +11,24 @@ import * as challengeUtils from '../lib/challengeUtils'
 import * as utils from '../lib/utils'
 import * as security from '../lib/insecurity'
 import { challenges } from '../data/datacache'
+import logger from '../lib/logger'
+
+// Saneamiento anti log-injection: elimina saltos de línea de los datos controlados por el usuario antes de registrarlos
+const sanitizeForLog = (v: unknown) => String(v ?? '').replace(/[\r\n]+/g, ' ')
 
 export function retrieveBasket () {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
       const id = req.params.id
+      // Control de acceso: el carrito solo puede ser consultado por su dueño (prevención IDOR / OWASP A01 / NIST PR.AA-05)
+      const user = security.authenticatedUsers.from(req)
+      if (!user || user.bid == null || Number(user.bid) !== Number(id)) {
+        res.status(401).json({ error: 'Unauthorized access to basket' })
+        return
+      }
       const basket = await BasketModel.findOne({ where: { id }, include: [{ model: ProductModel, paranoid: false, as: 'Products' }] })
+      // Auditoría de la operación transaccional (OWASP A09 / NIST DE.AE-02)
+      logger.info(`AUDIT basketView user=${sanitizeForLog(user?.data?.email)} basket=${sanitizeForLog(id)}`)
       /* jshint eqeqeq:false */
       challengeUtils.solveIf(challenges.basketAccessChallenge, () => {
         const user = security.authenticatedUsers.from(req)
