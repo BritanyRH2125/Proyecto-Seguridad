@@ -150,6 +150,7 @@
     "sqlite3": "^5.1.7",
     "svg-captcha": "^1.4.0",
     "swagger-ui-express": "^5.0.1",
+    "undici": "^6.29.1",
     "unzipper": "^0.12.3",
     "winston": "^3.16.0",
     "z85": "^0.0.2",
