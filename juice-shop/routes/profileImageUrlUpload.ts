@@ -3,49 +3,60 @@
  * SPDX-License-Identifier: MIT
  */
 
-import fs from 'node:fs'
-import { Readable } from 'node:stream'
-import { finished } from 'node:stream/promises'
+import fs from 'node:fs/promises'
+import path from 'node:path'
 import { type Request, type Response, type NextFunction } from 'express'
 
 import * as security from '../lib/insecurity'
 import { UserModel } from '../models/user'
-import * as utils from '../lib/utils'
+import { downloadSafeProfileImage } from '../lib/safeProfileImageDownload'
 import logger from '../lib/logger'
 
 export function profileImageUrlUpload () {
   return async (req: Request, res: Response, next: NextFunction) => {
-    if (req.body.imageUrl !== undefined) {
-      const url = req.body.imageUrl
-      if (url.match(/(.)*solve\/challenges\/server-side(.)*/) !== null) req.app.locals.abused_ssrf_bug = true
-      const loggedInUser = security.authenticatedUsers.get(req.cookies.token)
-      if (loggedInUser) {
-        try {
-          const response = await fetch(url)
-          if (!response.ok || !response.body) {
-            throw new Error('url returned a non-OK status code or an empty body')
-          }
-          const ext = ['jpg', 'jpeg', 'png', 'svg', 'gif'].includes(url.split('.').slice(-1)[0].toLowerCase()) ? url.split('.').slice(-1)[0].toLowerCase() : 'jpg'
-          const fileStream = fs.createWriteStream(`frontend/dist/frontend/assets/public/images/uploads/${loggedInUser.data.id}.${ext}`, { flags: 'w' })
-          await finished(Readable.fromWeb(response.body as any).pipe(fileStream))
-          const user = await UserModel.findByPk(loggedInUser.data.id)
-          await user?.update({ profileImage: `/assets/public/images/uploads/${loggedInUser.data.id}.${ext}` })
-        } catch (error) {
-          try {
-            const user = await UserModel.findByPk(loggedInUser.data.id)
-            await user?.update({ profileImage: url })
-            logger.warn(`Error retrieving user profile image: ${utils.getErrorMessage(error)}; using image link directly`)
-          } catch (error) {
-            next(error)
-            return
-          }
-        }
-      } else {
-        next(new Error('Blocked illegal activity by ' + req.socket.remoteAddress))
-        return
-      }
+    const loggedInUser = security.authenticatedUsers.get(req.cookies.token)
+
+    if (!loggedInUser) {
+      res.status(401).send('GU-05: autenticación requerida')
+      return
     }
-    res.location(process.env.BASE_PATH + '/profile')
-    res.redirect(process.env.BASE_PATH + '/profile')
+
+    if (typeof req.body?.imageUrl !== 'string' ||
+        req.body.imageUrl.trim() === '') {
+      res.status(400).send('GU-05: URL de imagen inválida')
+      return
+    }
+
+    try {
+      // GU-05: Prevención de SSRF en imágenes de perfil.
+      // Validar destino, IP de conexión, redirecciones,
+      // contenido y tamaño antes de guardar la imagen.
+      const { buffer, extension } =
+        await downloadSafeProfileImage(req.body.imageUrl)
+
+      const filename = `${loggedInUser.data.id}.${extension}`
+      const destination = path.resolve(
+        'frontend/dist/frontend/assets/public/images/uploads',
+        filename
+      )
+
+      await fs.writeFile(destination, buffer)
+
+      const user = await UserModel.findByPk(loggedInUser.data.id)
+      await user?.update({
+        profileImage: `assets/public/images/uploads/${filename}`
+      })
+
+      res.location(process.env.BASE_PATH + '/profile')
+      res.redirect(process.env.BASE_PATH + '/profile')
+    } catch (error) {
+      logger.warn(
+        'GU-05: carga de imagen rechazada: ' +
+        (error instanceof Error ? error.message : String(error))
+      )
+
+      // GU-05: Una URL rechazada no debe actualizar el perfil.
+      res.status(400).send('GU-05: imagen o destino no permitido')
+    }
   }
 }
