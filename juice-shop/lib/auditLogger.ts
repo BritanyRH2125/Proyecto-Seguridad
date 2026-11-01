@@ -3,6 +3,7 @@
  * Copyright (c) 2014-2026 Bjoern Kimminich & the OWASP Juice Shop contributors.
  * SPDX-License-Identifier: MIT
  */
+import { appendFile } from 'node:fs/promises'
 
 export interface AuditEventInput {
     event: string
@@ -97,4 +98,16 @@ export function serializeAuditEvent(input: AuditEventInput): string {
     }
 
     return JSON.stringify(record) + '\n'
+}
+
+export function createAuditWriter(filePath: string) {
+    return async (input: AuditEventInput): Promise<void> => {
+        const line = serializeAuditEvent(input)
+
+        await appendFile(filePath, line, {
+            encoding: 'utf8',
+            flag: 'a',
+            mode: 0o600
+        })
+    }
 }
