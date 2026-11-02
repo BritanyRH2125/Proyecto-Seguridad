@@ -221,4 +221,40 @@ void describe('auditLogger', () => {
         )
     })
 
+    void it('debe neutralizar caracteres Unicode que alteran la visualización', () => {
+        const line = serializeAuditEvent({
+            event: 'logs.access\u202Efake',
+            outcome: 'denied',
+            severity: 'warning',
+            traceId: 'la02-unicode-001'
+        })
+
+        const record = JSON.parse(line)
+
+        assert.equal(record.event, 'logs.accessfake')
+        assert.equal(line.includes('\u202E'), false)
+    })
+
+
+    void it('debe redactar secretos con caracteres invisibles en sus claves', () => {
+        const secret = 'SECRETO_FICTICIO_LA02'
+
+        const line = serializeAuditEvent({
+            event: 'security.test',
+            outcome: 'failure',
+            severity: 'warning',
+            traceId: 'la02-secret-001',
+            details: {
+                ['pass\u200Bword']: secret
+            }
+        })
+
+        const record = JSON.parse(line)
+
+        assert.equal(record.details.password, '[REDACTED]')
+        assert.equal(line.includes(secret), false)
+        assert.equal(line.includes('\u200B'), false)
+    })
+
+
 })
