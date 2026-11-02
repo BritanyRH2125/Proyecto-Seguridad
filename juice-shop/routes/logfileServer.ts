@@ -44,6 +44,38 @@ export function serveLogFiles () {
       return
     }
 
-    res.sendFile(filePath)
+    // El contenido de los logs proviene del cliente (URL, User-Agent, Referer):
+    // se entrega como texto plano descargable para que nunca se interprete como HTML.
+    res.sendFile(filePath, { headers: LOG_FILE_HEADERS })
+  }
+}
+
+const LOG_FILE_HEADERS = {
+  'Content-Type': 'text/plain; charset=utf-8',
+  'Content-Disposition': 'attachment',
+  'Content-Security-Policy': "default-src 'none'; sandbox",
+  'X-Content-Type-Options': 'nosniff',
+  'Cache-Control': 'no-store'
+}
+
+// Política para el listado HTML de /support/logs: sin scripts, sin recursos externos
+// y en un origen aislado. Solo se permiten los estilos e íconos en línea de serve-index.
+const LOG_LISTING_CSP = [
+  "default-src 'none'",
+  "script-src 'none'",
+  "style-src 'unsafe-inline'",
+  'img-src data:',
+  "base-uri 'none'",
+  "form-action 'none'",
+  "frame-ancestors 'none'",
+  'sandbox'
+].join('; ')
+
+export function secureLogViewerHeaders () {
+  return (_req: Request, res: Response, next: NextFunction) => {
+    res.setHeader('Content-Security-Policy', LOG_LISTING_CSP)
+    res.setHeader('X-Content-Type-Options', 'nosniff')
+    res.setHeader('Cache-Control', 'no-store')
+    next()
   }
 }
