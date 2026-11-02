@@ -37,6 +37,7 @@ const sensitiveKeys = new Set([
 function sanitizeText(value: string, maxLength: number): string {
     return value
         .replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g, ' ')
+        .replace(/\p{Cf}/gu, '')
         .slice(0, maxLength)
 }
 
@@ -45,7 +46,10 @@ function sanitizeDetailValue(
     key: string,
     depth = 0
 ): unknown {
-    const normalizedKey = key.replace(/[\s_-]/g, '').toLowerCase()
+    const normalizedKey = key
+        .replace(/\p{Cf}/gu, '')
+        .replace(/[\s_-]/g, '')
+        .toLowerCase()
 
     if (sensitiveKeys.has(normalizedKey)) {
         return REDACTED
