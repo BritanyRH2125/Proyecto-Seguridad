@@ -50,6 +50,8 @@ import { SecurityAnswerModel } from './models/securityAnswer'
 import { PrivacyRequestModel } from './models/privacyRequests'
 import { SecurityQuestionModel } from './models/securityQuestion'
 
+import { auditDataExport } from './lib/dataExportAudit'
+
 import logger from './lib/logger'
 import {
   auditRequestContext,
@@ -705,6 +707,17 @@ function configureApp (app: ReturnType<typeof express>, seq: typeof sequelize) {
   app.get('/rest/track-order/:id', trackOrder())
   app.get('/rest/country-mapping', utils.asyncHandler(countryMapping()))
   app.get('/rest/saveLoginIp', utils.asyncHandler(saveLoginIp()))
+
+  // LA-04: registrar el resultado de los intentos
+  // de exportación sin almacenar datos personales.
+  app.post(
+    '/rest/user/data-export',
+    auditDataExport(
+      auditWriter,
+      () => logger.error('audit_write_failed')
+    )
+  )
+
   app.post('/rest/user/data-export', security.appendUserId(), utils.asyncHandler(verifyImageCaptcha()))
   app.post('/rest/user/data-export', security.appendUserId(), utils.asyncHandler(dataExport()))
   app.get('/rest/languages', utils.asyncHandler(getLanguageList()))
