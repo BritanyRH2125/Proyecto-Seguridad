@@ -51,6 +51,13 @@ import { PrivacyRequestModel } from './models/privacyRequests'
 import { SecurityQuestionModel } from './models/securityQuestion'
 
 import logger from './lib/logger'
+import {
+  auditRequestContext,
+  getAuditTraceId,
+  createAuditWriter,
+  tryWriteAuditEvent
+} from './lib/auditLogger'
+
 import * as utils from './lib/utils'
 import * as antiCheat from './lib/antiCheat'
 import * as security from './lib/insecurity'
@@ -177,6 +184,8 @@ function configureApp (app: ReturnType<typeof express>, seq: typeof sequelize) {
   app.locals.abused_ssti_bug = false
   app.locals.abused_ssrf_bug = false
 
+  app.use(auditRequestContext())
+
   /* Compression for all requests */
   app.use(compression())
 
@@ -297,6 +306,49 @@ function configureApp (app: ReturnType<typeof express>, seq: typeof sequelize) {
   /* /encryptionkeys directory browsing */
   app.use('/encryptionkeys', serveIndexMiddleware, serveIndex('encryptionkeys', { icons: true, view: 'details' }))
   app.use('/encryptionkeys/:file', serveKeyFiles())
+
+  /* Registro de eventos de acceso a logs */
+  const auditWriter = createAuditWriter(
+    path.resolve('private-audit/security-audit.log')
+  )
+
+  app.use('/support/logs', (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ) => {
+    res.once('finish', () => {
+      const status = res.statusCode
+
+      const outcome =
+        status === 401 || status === 403
+          ? 'denied'
+          : status >= 400
+            ? 'failure'
+            : 'success'
+
+      void tryWriteAuditEvent (
+        auditWriter,
+        {
+          event: 'logs.access',
+          outcome,
+          severity:
+            status >= 500
+              ? 'error'
+              : outcome === 'denied' || status >= 400
+                ? 'warning'
+                : 'info',
+          traceId: getAuditTraceId(req),
+          details: {
+            httpStatus: status
+          }
+        },
+        () => logger.error('audit_write_failed')
+      )
+    })
+
+    next()
+  })
 
   /* /logs directory browsing */ // vuln-code-snippet neutral-line accessLogDisclosureChallenge
   // FIX A01/A09: el acceso a los logs requiere autenticación y rol admin (antes era anónimo)

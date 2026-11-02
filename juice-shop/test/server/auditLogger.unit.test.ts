@@ -3,11 +3,50 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
     serializeAuditEvent,
-    createAuditWriter
+    createAuditWriter,
+    tryWriteAuditEvent,
+    auditRequestContext,
+    getAuditTraceId
 } from '../../lib/auditLogger'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import type { Request, Response } from 'express'
+
+const failingWriter = async () => {
+    throw new Error('write failed')
+}
+
+
+void it('debe crear el directorio de auditoría si no existe', async () => {
+    const testDirectory = mkdtempSync(join(tmpdir(), 'audit-la01-'))
+
+    try {
+        const filePath = join(
+            testDirectory,
+            'private-audit',
+            'security-audit.log'
+        )
+
+        const writeEvent = createAuditWriter(filePath)
+
+        await writeEvent({
+            event: 'security.test',
+            outcome: 'success',
+            severity: 'info',
+            traceId: 'trace-directorio-001'
+        })
+
+        const content = readFileSync(filePath, 'utf8')
+        const record = JSON.parse(content.trim())
+
+        assert.equal(record.event, 'security.test')
+        assert.equal(record.traceId, 'trace-directorio-001')
+    } finally {
+        rmSync(testDirectory, { recursive: true, force: true })
+    }
+})
+
 
 void describe('auditLogger', () => {
     void it('debe serializar un evento de auditoría como una línea JSON válida', () => {
@@ -118,6 +157,68 @@ void describe('auditLogger', () => {
         } finally {
             rmSync(testDirectory, { recursive: true, force: true })
         }
+    })
+
+    void it('debe manejar errores al escribir eventos de auditoría', async () => {
+        const alerts: string[] = []
+
+        const result = await tryWriteAuditEvent(
+            failingWriter,
+            {
+                event: 'security.test',
+                outcome: 'failure',
+                severity: 'warning',
+                traceId: 'trace-error-001'
+            },
+            (alertCode: string) => {
+                alerts.push(alertCode)
+            }
+        )
+
+        assert.equal(result, false)
+        assert.deepEqual(alerts, ['audit_write_failed'])
+    })
+
+
+
+    void it('debe generar un traceId de servidor y devolverlo en la respuesta', () => {
+        const req = {
+            headers: {
+                'x-request-id': 'identificador-falsificado'
+            }
+        } as unknown as Request
+
+        const headers = new Map<string, string>()
+
+        const res = {
+            setHeader: (name: string, value: string) => {
+                headers.set(name, value)
+            }
+        } as unknown as Response
+
+        let nextCalls = 0
+
+        auditRequestContext()(req, res, () => {
+            nextCalls++
+        })
+
+        const traceId = getAuditTraceId(req)
+
+        assert.match(
+            traceId,
+            /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+        )
+
+        assert.equal(headers.get('X-Request-ID'), traceId)
+        assert.notEqual(traceId, 'identificador-falsificado')
+        assert.equal(nextCalls, 1)
+
+        const anotherRequest = {} as Request
+
+        assert.notEqual(
+            getAuditTraceId(anotherRequest),
+            traceId
+        )
     })
 
 })

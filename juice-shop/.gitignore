@@ -74,3 +74,6 @@ cypress/screenshots/
 
 # Clave privada de firma JWT (secreto externalizado, no debe versionarse) - FIX GV.RM-02
 encryptionkeys/jwt.key
+
+# Archivos privados de auditoría de seguridad
+/private-audit/

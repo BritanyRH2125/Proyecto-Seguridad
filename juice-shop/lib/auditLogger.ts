@@ -3,8 +3,10 @@
  * Copyright (c) 2014-2026 Bjoern Kimminich & the OWASP Juice Shop contributors.
  * SPDX-License-Identifier: MIT
  */
-import { appendFile } from 'node:fs/promises'
-
+import { appendFile, mkdir } from 'node:fs/promises'
+import { dirname } from 'node:path'
+import { randomUUID } from 'node:crypto'
+import type { Request, Response, NextFunction } from 'express'
 export interface AuditEventInput {
     event: string
     outcome: 'success' | 'failure' | 'denied'
@@ -104,10 +106,57 @@ export function createAuditWriter(filePath: string) {
     return async (input: AuditEventInput): Promise<void> => {
         const line = serializeAuditEvent(input)
 
+        await mkdir(dirname(filePath), {
+            recursive: true,
+            mode: 0o700
+        })
+
         await appendFile(filePath, line, {
             encoding: 'utf8',
             flag: 'a',
             mode: 0o600
         })
+    }
+}
+
+export async function tryWriteAuditEvent (
+    writer: (input: AuditEventInput) => Promise<void>,
+    input: AuditEventInput,
+    onFailure: (code: string) => void
+): Promise<boolean> {
+    try {
+        await writer(input)
+        return true
+    } catch {
+        try {
+            onFailure('audit_write_failed')
+        } catch {
+            // Un error al emitir la alerta no debe interrumpir la operación.
+        }
+
+        return false
+    }
+}
+
+const requestTraceIds = new WeakMap<Request, string>()
+
+export function getAuditTraceId (req: Request): string {
+    let traceId = requestTraceIds.get(req)
+
+    if (traceId === undefined) {
+        traceId = randomUUID()
+        requestTraceIds.set(req, traceId)
+    }
+
+    return traceId
+}
+
+export function auditRequestContext() {
+    return (req: Request, res: Response, next: NextFunction): void => {
+        const traceId = getAuditTraceId(req)
+
+        res.setHeader('X-Request-ID', traceId)
+
+        next()
     }
 }
