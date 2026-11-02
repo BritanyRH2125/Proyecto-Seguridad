@@ -9,7 +9,8 @@ import { describe, it, mock } from 'node:test'
 import assert from 'node:assert/strict'
 import type { Request, Response, NextFunction } from 'express'
 
-import { auditLogsAccess } from '../../lib/logsAccessAudit'
+import { auditLogsAccess, INVALID_LOG_PATH } from '../../lib/logsAccessAudit'
+import { serveLogFiles } from '../../routes/logfileServer'
 import {
     getAuditTraceId,
     type AuditEventInput
@@ -117,6 +118,24 @@ void describe('logsAccessAudit - LA-06', () => {
         })
 
         assert.ok(!JSON.stringify(events[0]).includes('PRIVATE_TOKEN_123'))
+    })
+
+    void it('serveLogFiles debe marcar el rechazo de ruta para la auditoría', () => {
+        const res = {
+            locals: {},
+            status() {
+                return this
+            },
+            sendFile() {}
+        } as unknown as Response
+
+        serveLogFiles()(
+            { params: { file: '..\\private-audit\\security-audit.log' } } as unknown as Request,
+            res,
+            () => {}
+        )
+
+        assert.equal(res.locals.auditReason, INVALID_LOG_PATH)
     })
 
     void it('no debe aceptar un motivo de auditoría arbitrario desde res.locals', () => {

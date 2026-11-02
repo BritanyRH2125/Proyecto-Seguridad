@@ -55,10 +55,9 @@ import { auditDataExport } from './lib/dataExportAudit'
 import logger from './lib/logger'
 import {
   auditRequestContext,
-  getAuditTraceId,
-  createAuditWriter,
-  tryWriteAuditEvent
+  createAuditWriter
 } from './lib/auditLogger'
+import { auditLogsAccess } from './lib/logsAccessAudit'
 
 import * as utils from './lib/utils'
 import * as antiCheat from './lib/antiCheat'
@@ -314,43 +313,11 @@ function configureApp (app: ReturnType<typeof express>, seq: typeof sequelize) {
     path.resolve('private-audit/security-audit.log')
   )
 
-  app.use('/support/logs', (
-    req: Request,
-    res: Response,
-    next: NextFunction
-  ) => {
-    res.once('finish', () => {
-      const status = res.statusCode
-
-      const outcome =
-        status === 401 || status === 403
-          ? 'denied'
-          : status >= 400
-            ? 'failure'
-            : 'success'
-
-      void tryWriteAuditEvent (
-        auditWriter,
-        {
-          event: 'logs.access',
-          outcome,
-          severity:
-            status >= 500
-              ? 'error'
-              : outcome === 'denied' || status >= 400
-                ? 'warning'
-                : 'info',
-          traceId: getAuditTraceId(req),
-          details: {
-            httpStatus: status
-          }
-        },
-        () => logger.error('audit_write_failed')
-      )
-    })
-
-    next()
-  })
+  // LA-06: el evento logs.access clasifica el motivo de cada rechazo.
+  app.use('/support/logs', auditLogsAccess(
+    auditWriter,
+    () => logger.error('audit_write_failed')
+  ))
 
   // LA-05: cabeceras de visualización segura para el listado y los archivos de logs.
   app.use('/support/logs', secureLogViewerHeaders())

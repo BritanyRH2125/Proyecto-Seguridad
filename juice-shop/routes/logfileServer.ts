@@ -5,6 +5,14 @@
 
 import path from 'node:path'
 import { type Request, type Response, type NextFunction } from 'express'
+import { INVALID_LOG_PATH } from '../lib/logsAccessAudit'
+
+// LA-06: marca el rechazo para que la auditoría lo registre como invalid_log_path.
+function rejectLogPath (res: Response) {
+  res.locals = res.locals ?? {}
+  res.locals.auditReason = INVALID_LOG_PATH
+  res.status(403)
+}
 
 export function serveLogFiles () {
   return ({ params }: Request, res: Response, next: NextFunction) => {
@@ -22,7 +30,7 @@ export function serveLogFiles () {
       /[\u0000-\u001f\u007f]/.test(file)
 
     if (invalidName) {
-      res.status(403)
+      rejectLogPath(res)
       next(new Error('Invalid log file name'))
       return
     }
@@ -39,7 +47,7 @@ export function serveLogFiles () {
       path.isAbsolute(relativePath)
 
     if (escapesLogs) {
-      res.status(403)
+      rejectLogPath(res)
       next(new Error('Log file path is outside the allowed directory'))
       return
     }
