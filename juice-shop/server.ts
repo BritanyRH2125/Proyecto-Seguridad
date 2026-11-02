@@ -102,7 +102,7 @@ import { getLanguageList } from './routes/languages'
 import { getUserProfile } from './routes/userProfile'
 import { serveAngularClient } from './routes/angular'
 import { resetPassword } from './routes/resetPassword'
-import { serveLogFiles } from './routes/logfileServer'
+import { serveLogFiles, secureLogViewerHeaders } from './routes/logfileServer'
 import { servePublicFiles } from './routes/fileServer'
 import { addMemory, getMemories } from './routes/memory'
 import { changePassword } from './routes/changePassword'
@@ -351,6 +351,9 @@ function configureApp (app: ReturnType<typeof express>, seq: typeof sequelize) {
 
     next()
   })
+
+  // LA-05: cabeceras de visualización segura para el listado y los archivos de logs.
+  app.use('/support/logs', secureLogViewerHeaders())
 
   /* /logs directory browsing */ // vuln-code-snippet neutral-line accessLogDisclosureChallenge
   // FIX A01/A09: el acceso a los logs requiere autenticación y rol admin (antes era anónimo)
