@@ -3,3 +3,4 @@ fix/logs-audit-poisoning-Ignacio
 fix/logs-path-traversal-Ignacio
 feat/logs-eventos-sensibles-Ignacio
 fix/logs-visualizacion-segura-Ignacio
+feat/logs-deteccion-escalada-Ignacio
